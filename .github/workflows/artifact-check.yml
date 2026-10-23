@@ -1,0 +1,41 @@
+name: 公开仓库制品上传与下载验证
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  public-artifact-check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: 生成 67 MiB 合成测试文件
+        run: |
+          node --input-type=module <<'NODE'
+          import {randomBytes,createHash} from 'node:crypto';
+          import {writeFileSync} from 'node:fs';
+          const bytes=randomBytes(67*1024*1024);
+          writeFileSync('public-artifact-probe.bin',bytes);
+          writeFileSync('SHA256SUMS.txt',createHash('sha256').update(bytes).digest('hex')+'  public-artifact-probe.bin\n');
+          console.log('Synthetic test bytes:',bytes.length);
+          NODE
+      - name: 上传真实制品
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-artifact-storage-check
+          path: |
+            public-artifact-probe.bin
+            SHA256SUMS.txt
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
+      - name: 下载刚上传的制品
+        uses: actions/download-artifact@v4
+        with:
+          name: public-artifact-storage-check
+          path: recovered
+      - name: 校验下载后的 SHA-256
+        working-directory: recovered
+        run: sha256sum --check SHA256SUMS.txt
